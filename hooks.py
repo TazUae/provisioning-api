@@ -1,0 +1,6 @@
+app_name = "provisioning_api"
+app_title = "Provisioning API"
+app_publisher = "Yasser"
+app_description = "ERP provisioning layer"
+app_email = "tazuaeksa@gmail.com"
+app_license = "MIT"
