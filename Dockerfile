@@ -4,6 +4,7 @@ USER root
 RUN apt-get update && apt-get install -y git
 
 USER frappe
+WORKDIR /home/frappe/frappe-bench
 
 COPY --chown=frappe:frappe provisioning_api /home/frappe/frappe-bench/apps/provisioning_api
 
