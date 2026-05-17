@@ -1,0 +1,196 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-04-20 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "trainer_id",
+  "client_id",
+  "client_name",
+  "series_id",
+  "column_break_1",
+  "start_at",
+  "end_at",
+  "duration_minutes",
+  "timezone",
+  "section_break_1",
+  "status",
+  "occurrence_key",
+  "occurrence_index",
+  "is_override",
+  "column_break_2",
+  "rate",
+  "session_type",
+  "invoice_id",
+  "version",
+  "section_break_2",
+  "notes",
+  "is_trial_session",
+  "session_consumed_package"
+ ],
+ "fields": [
+  {
+   "fieldname": "trainer_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Trainer ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "client_id",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Client",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "client_id.customer_name",
+   "fieldname": "client_name",
+   "fieldtype": "Data",
+   "label": "Client Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "series_id",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Series ID"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "start_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Start At (UTC)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "end_at",
+   "fieldtype": "Datetime",
+   "label": "End At (UTC)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "duration_minutes",
+   "fieldtype": "Int",
+   "label": "Duration (minutes)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "timezone",
+   "fieldtype": "Data",
+   "label": "Timezone",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "scheduled",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "scheduled\nconfirmed\ncompleted\ncancelled\nno_show\nskipped",
+   "reqd": 1
+  },
+  {
+   "fieldname": "occurrence_key",
+   "fieldtype": "Data",
+   "label": "Occurrence Key"
+  },
+  {
+   "fieldname": "occurrence_index",
+   "fieldtype": "Int",
+   "label": "Occurrence Index"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_override",
+   "fieldtype": "Check",
+   "label": "Is Override"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Rate",
+   "reqd": 1
+  },
+  {
+   "fieldname": "session_type",
+   "fieldtype": "Data",
+   "label": "Session Type"
+  },
+  {
+   "fieldname": "invoice_id",
+   "fieldtype": "Data",
+   "label": "Invoice ID"
+  },
+  {
+   "default": "1",
+   "fieldname": "version",
+   "fieldtype": "Int",
+   "label": "Version"
+  },
+  {
+   "fieldname": "section_break_2",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Notes"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_trial_session",
+   "fieldtype": "Check",
+   "label": "Is Trial Session"
+  },
+  {
+   "default": "0",
+   "fieldname": "session_consumed_package",
+   "fieldtype": "Check",
+   "label": "Session Consumed Package"
+  }
+ ],
+ "links": [],
+ "modified": "2026-04-20 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Api",
+ "name": "FD Session",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "start_at",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
