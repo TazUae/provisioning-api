@@ -531,7 +531,7 @@ if not doc.custom_whatsapp_sent:
         "reference_doctype": "Sales Invoice",
         "doctype_event": "After Submit",
         "script": script_code,
-        "disabled": 0,
+        "disabled": 1,   # invoice payment requests require explicit trainer action
     })
     ss.insert(ignore_permissions=True)
     frappe.db.commit()
