@@ -182,7 +182,7 @@ _CUSTOM_FIELDS = [
     ("Sales Invoice", "custom_payment_link",       "Payment Link",       "Data",  None,                                "custom_whatsapp_sent"),
     ("Sales Invoice", "custom_payment_reference",  "Whish Reference",   "Data",   None,                                "custom_payment_link"),
     # Phase B additions
-    ("Customer",      "custom_billing_mode",         "Billing Mode",         "Select",   "Package\nPay Per Session\nTrial", "custom_remaining_sessions"),
+    ("Customer",      "custom_billing_mode",         "Billing Mode",         "Select",   "Package\nPay Per Session", "custom_remaining_sessions"),
     ("Customer",      "custom_default_session_rate",  "Default Session Rate", "Currency", None,                             "custom_billing_mode"),
     ("Customer",      "custom_package_name",          "Package Name",         "Data",     None,                             "custom_default_session_rate"),
     ("Sales Invoice", "custom_fd_session",            "FD Session",           "Data",     None,                             "custom_payment_reference"),
@@ -432,44 +432,172 @@ def _create_print_format(frappe) -> dict:
 
 # ── Sub-function 6: Mode of Payment ──────────────────────────────────────────
 
-def _create_mode_of_payment(frappe, company_name: str, company_abbr: str) -> dict:
-    """Create the 'Whish Money' Mode of Payment if it doesn't exist.
+def _get_account_for_company(
+    frappe,
+    company_name: str,
+    preferred_account_type: str,
+    fallback_account_type: str | None = None,
+) -> str | None:
+    """Find an account of the preferred type for the company.
 
-    Maps the payment method to the company's Bank account (or Cash as fallback).
-    Idempotent: returns {"skipped": True} if already exists.
+    Searches for an account matching the preferred_account_type. If not found,
+    optionally searches for fallback_account_type. Returns the first matching
+    account name or None.
+
+    Args:
+        frappe: Frappe context
+        company_name: Target company name
+        preferred_account_type: Primary account_type to search (e.g. "Cash", "Bank")
+        fallback_account_type: Secondary account_type to search if primary not found
 
     Returns:
-        {"skipped": True}  or
-        {"mode_of_payment": "Whish Money", "account": <account_name>}
+        Account name (str) or None if no matching account found
     """
-    if frappe.db.exists("Mode of Payment", "Whish Money"):
-        return {"skipped": True}
-
-    # Find a bank-type account for this company
-    bank_account = frappe.db.get_value(
+    account = frappe.db.get_value(
         "Account",
-        {"company": company_name, "account_type": "Bank", "is_group": 0},
+        {"company": company_name, "account_type": preferred_account_type, "is_group": 0},
         "name",
     )
-    if not bank_account:
-        # Fall back to a Cash account
-        bank_account = frappe.db.get_value(
+    if account:
+        return account
+
+    if fallback_account_type:
+        account = frappe.db.get_value(
             "Account",
-            {"company": company_name, "account_type": "Cash", "is_group": 0},
+            {"company": company_name, "account_type": fallback_account_type, "is_group": 0},
             "name",
         )
+        if account:
+            return account
 
+    return None
+
+
+def _upsert_mode_of_payment(
+    frappe,
+    mode_name: str,
+    payment_type: str,
+    company_name: str,
+    account_name: str,
+) -> dict:
+    """Create or update a Mode of Payment with company account mapping.
+
+    Fully idempotent:
+    - If Mode of Payment doesn't exist, create it with the account
+    - If it exists but has no accounts table row for company, add the row
+    - If it exists and already has the company row, do nothing
+    - If account is None, skip creation/update and raise clear error
+
+    Args:
+        frappe: Frappe context
+        mode_name: Mode of Payment name (e.g. "Cash", "Whish Money")
+        payment_type: Frappe payment type (e.g. "Bank", "Cash")
+        company_name: Target company name
+        account_name: Default account for this mode/company pair
+
+    Returns:
+        {"created": mode_name, "account": account_name}  or
+        {"upserted": mode_name, "account": account_name}  or
+        {"skipped": mode_name, "reason": "account already configured"}
+
+    Raises:
+        ValueError: if account_name is None
+    """
+    if not account_name:
+        raise ValueError(
+            f"Cannot create Mode of Payment '{mode_name}': "
+            f"no suitable account found for company '{company_name}'. "
+            f"Ensure the company has at least one {payment_type}-type account."
+        )
+
+    mop_exists = frappe.db.exists("Mode of Payment", mode_name)
+
+    if mop_exists:
+        # Fetch the existing Mode of Payment and check accounts table
+        mop = frappe.get_doc("Mode of Payment", mode_name)
+
+        # Check if company already has an account configured
+        company_already_configured = any(
+            acc.company == company_name
+            for acc in (mop.accounts or [])
+        )
+
+        if company_already_configured:
+            # Already configured for this company; skip
+            return {"skipped": mode_name, "reason": "account already configured"}
+
+        # Mode exists but needs company account row; add it
+        mop.append("accounts", {
+            "company": company_name,
+            "default_account": account_name,
+        })
+        mop.save(ignore_permissions=True)
+        frappe.db.commit()
+        return {"upserted": mode_name, "account": account_name}
+
+    # Mode doesn't exist; create it from scratch
     mop = frappe.get_doc({
         "doctype": "Mode of Payment",
-        "mode_of_payment": "Whish Money",
-        "type": "Bank",
-        **({"accounts": [{"company": company_name, "default_account": bank_account}]}
-           if bank_account else {}),
+        "mode_of_payment": mode_name,
+        "type": payment_type,
+        "accounts": [{"company": company_name, "default_account": account_name}],
     })
     mop.insert(ignore_permissions=True)
     frappe.db.commit()
+    return {"created": mode_name, "account": account_name}
 
-    return {"mode_of_payment": "Whish Money", "account": bank_account}
+
+def _create_mode_of_payment(frappe, company_name: str, company_abbr: str) -> dict:
+    """Configure all FitDesk payment methods (Cash, Bank Transfer, Whish Money).
+
+    Creates or updates Mode of Payment records for the three payment methods
+    FitDesk exposes to trainers. All are idempotent.
+
+    Returns:
+        {
+            "modes": {
+                "Cash": {...},
+                "Bank Transfer": {...},
+                "Whish Money": {...},
+            }
+        }
+    """
+    results: dict[str, dict] = {}
+
+    # Cash: require Cash account type only (no fallback for accounting safety)
+    cash_account = _get_account_for_company(frappe, company_name, "Cash")
+    if not cash_account:
+        raise ValueError(
+            f"Cannot configure Cash mode: company '{company_name}' has no Cash account. "
+            "Check ERPNext Chart of Accounts and ensure a Cash-type account exists."
+        )
+    results["Cash"] = _upsert_mode_of_payment(
+        frappe, "Cash", "Cash", company_name, cash_account
+    )
+
+    # Bank Transfer: require Bank account type only (no fallback for accounting safety)
+    bank_account = _get_account_for_company(frappe, company_name, "Bank")
+    if not bank_account:
+        raise ValueError(
+            f"Cannot configure Bank Transfer mode: company '{company_name}' has no Bank account. "
+            "Check ERPNext Chart of Accounts and ensure a Bank-type account exists."
+        )
+    results["Bank Transfer"] = _upsert_mode_of_payment(
+        frappe, "Bank Transfer", "Bank", company_name, bank_account
+    )
+
+    # Whish Money: try Bank account, fall back to Cash (preserve existing behavior)
+    whish_account = _get_account_for_company(frappe, company_name, "Bank", "Cash")
+    if not whish_account:
+        raise ValueError(
+            f"Cannot configure Whish Money mode: company '{company_name}' has no Bank or Cash account. "
+            "Check ERPNext Chart of Accounts."
+        )
+    results["Whish Money"] = _upsert_mode_of_payment(
+        frappe, "Whish Money", "Bank", company_name, whish_account
+    )
+
+    return {"modes": results}
 
 
 # ── Sub-function 7: WhatsApp Server Script ────────────────────────────────────
@@ -667,17 +795,21 @@ def verify_fitdesk_schema(company_name: str) -> dict:
             ]],
         },
     )
-    checks["training_item"] = frappe.db.exists("Item", "TRAINING-SESSION") is not None
-    checks["customer_group"] = frappe.db.exists("Customer Group", "Individual") is not None
-    checks["print_format"] = frappe.db.exists("Print Format", "FitDesk Invoice") is not None
-    checks["mode_of_payment"] = frappe.db.exists("Mode of Payment", "Whish Money") is not None
-    checks["server_script"] = frappe.db.exists("Server Script", "FitDesk Invoice Submit Webhook") is not None
+    checks["training_item"] = bool(frappe.db.exists("Item", "TRAINING-SESSION"))
+    checks["customer_group"] = bool(frappe.db.exists("Customer Group", "Individual"))
+    checks["print_format"] = bool(frappe.db.exists("Print Format", "FitDesk Invoice"))
+    checks["mode_of_payment_cash"] = bool(frappe.db.exists("Mode of Payment", "Cash"))
+    checks["mode_of_payment_bank_transfer"] = bool(frappe.db.exists("Mode of Payment", "Bank Transfer"))
+    checks["mode_of_payment_whish"] = bool(frappe.db.exists("Mode of Payment", "Whish Money"))
+    checks["server_script"] = bool(frappe.db.exists("Server Script", "FitDesk Invoice Submit Webhook"))
 
     all_ok = (
         checks["custom_fields"] == 15
         and checks["training_item"]
         and checks["customer_group"]
         and checks["print_format"]
-        and checks["mode_of_payment"]
+        and checks["mode_of_payment_cash"]
+        and checks["mode_of_payment_bank_transfer"]
+        and checks["mode_of_payment_whish"]
     )
     return {"ok": all_ok, "checks": checks}

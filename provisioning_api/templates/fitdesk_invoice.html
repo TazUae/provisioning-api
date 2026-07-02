@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitDesk Invoice</title>
+  <style>
+    /* Inline styles only — no external resources; renders correctly in wkhtmltopdf */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      color: #1a1a1a;
+      background: #ffffff;
+    }
+    .page {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 32px 28px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid #1D9E75;
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+    }
+    .brand-name {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1D9E75;
+      letter-spacing: -0.3px;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+    }
+    .invoice-meta {
+      text-align: right;
+    }
+    .invoice-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #888;
+    }
+    .invoice-number {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .invoice-date {
+      font-size: 12px;
+      color: #555;
+      margin-top: 4px;
+    }
+
+    /* ── Section label ──────────────────────────────────────────────── */
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #1D9E75;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    /* ── Client block ───────────────────────────────────────────────── */
+    .client-block {
+      background: #f8fffe;
+      border-left: 4px solid #1D9E75;
+      padding: 14px 16px;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 24px;
+    }
+    .client-name {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .client-phone {
+      font-size: 13px;
+      color: #555;
+      margin-top: 3px;
+    }
+
+    /* ── Session / items table ──────────────────────────────────────── */
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 8px;
+    }
+    .items-table th {
+      background: #1D9E75;
+      color: #fff;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .items-table th:last-child,
+    .items-table td:last-child {
+      text-align: right;
+    }
+    .items-table td {
+      padding: 10px;
+      border-bottom: 1px solid #e8e8e8;
+      font-size: 13px;
+      vertical-align: top;
+    }
+    .item-desc {
+      font-size: 12px;
+      color: #666;
+      margin-top: 2px;
+    }
+    .session-date-row {
+      font-size: 12px;
+      color: #888;
+      padding: 4px 10px 10px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    /* ── Total block ────────────────────────────────────────────────── */
+    .totals-block {
+      margin: 16px 0 24px;
+      text-align: right;
+    }
+    .total-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 24px;
+      font-size: 13px;
+      color: #555;
+      padding: 3px 0;
+    }
+    .total-row.grand {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1D9E75;
+      margin-top: 8px;
+      padding-top: 10px;
+      border-top: 2px solid #1D9E75;
+    }
+    .total-row.grand .label { color: #333; }
+
+    /* ── Payment block ──────────────────────────────────────────────── */
+    .payment-block {
+      background: #f4fef9;
+      border: 1px solid #b2e8d4;
+      border-radius: 8px;
+      padding: 16px 18px;
+      margin-bottom: 28px;
+    }
+    .payment-cta {
+      font-size: 14px;
+      font-weight: 600;
+      color: #0d7a57;
+      margin-bottom: 8px;
+    }
+    .payment-link {
+      word-break: break-all;
+      font-size: 12px;
+      color: #1D9E75;
+      font-family: monospace;
+    }
+    .payment-ref {
+      font-size: 12px;
+      color: #666;
+      margin-top: 6px;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────────────── */
+    .footer {
+      border-top: 1px solid #e0e0e0;
+      padding-top: 16px;
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+    }
+    .footer strong {
+      color: #1D9E75;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ──────────────────────────────────────────────────── -->
+  <div class="header">
+    <div>
+      <div class="brand-name">{{ doc.company }}</div>
+      <div class="brand-sub">
+        {%- if doc.company_abbr %}{{ doc.company_abbr }} · {%- endif %}Personal Training
+      </div>
+    </div>
+    <div class="invoice-meta">
+      <div class="invoice-label">Invoice</div>
+      <div class="invoice-number">{{ doc.name }}</div>
+      <div class="invoice-date">
+        {%- if doc.custom_session_date %}
+          Session: {{ doc.custom_session_date }}
+        {%- else %}
+          {{ doc.posting_date }}
+        {%- endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Client block ─────────────────────────────────────────── -->
+  <div class="section-label">Client</div>
+  <div class="client-block">
+    <div class="client-name">{{ doc.customer_name }}</div>
+    {%- if doc.contact_mobile %}
+    <div class="client-phone">📱 {{ doc.contact_mobile }}</div>
+    {%- endif %}
+  </div>
+
+  <!-- ── Session items ─────────────────────────────────────────── -->
+  <div class="section-label">Session Details</div>
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width:50%">Service</th>
+        <th style="width:15%">Qty</th>
+        <th style="width:17%">Rate</th>
+        <th style="width:18%">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for item in doc.items %}
+      <tr>
+        <td>
+          <div>{{ item.item_name or item.item_code }}</div>
+          {%- if item.description %}
+          <div class="item-desc">{{ item.description }}</div>
+          {%- endif %}
+        </td>
+        <td>{{ item.qty }}</td>
+        <td>{{ doc.currency }} {{ "{:,.2f}".format(item.rate) }}</td>
+        <td>{{ doc.currency }} {{ "{:,.2f}".format(item.amount) }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if doc.custom_session_date %}
+  <div class="session-date-row">
+    Session date: <strong>{{ doc.custom_session_date }}</strong>
+  </div>
+  {%- endif %}
+
+  <!-- ── Totals ────────────────────────────────────────────────── -->
+  <div class="totals-block">
+    {%- if doc.total_taxes_and_charges %}
+    <div class="total-row">
+      <span class="label">Subtotal</span>
+      <span>{{ doc.currency }} {{ "{:,.2f}".format(doc.net_total) }}</span>
+    </div>
+    <div class="total-row">
+      <span class="label">Tax</span>
+      <span>{{ doc.currency }} {{ "{:,.2f}".format(doc.total_taxes_and_charges) }}</span>
+    </div>
+    {%- endif %}
+    <div class="total-row grand">
+      <span class="label">Total Due</span>
+      <span>{{ doc.currency }} {{ "{:,.2f}".format(doc.grand_total) }}</span>
+    </div>
+  </div>
+
+  <!-- ── Payment block ─────────────────────────────────────────── -->
+  <div class="payment-block">
+    <div class="payment-cta">Pay via WhatsApp link</div>
+    {%- if doc.custom_payment_link %}
+    <div class="payment-link">{{ doc.custom_payment_link }}</div>
+    {%- else %}
+    <div class="payment-link" style="color:#bbb;">Payment link will appear here</div>
+    {%- endif %}
+    {%- if doc.custom_payment_reference %}
+    <div class="payment-ref">Whish Reference: <strong>{{ doc.custom_payment_reference }}</strong></div>
+    {%- endif %}
+  </div>
+
+  <!-- ── Footer ────────────────────────────────────────────────── -->
+  <div class="footer">
+    Thank you — <strong>FitDesk by Zaidan Group</strong>
+  </div>
+
+</div>
+</body>
+</html>
