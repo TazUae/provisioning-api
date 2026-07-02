@@ -236,18 +236,20 @@ class TestCreateModeOfPayment(unittest.TestCase):
 
 
 class TestVerifyFitdeskSchema(unittest.TestCase):
-    """Test verify_fitdesk_schema checks all three modes."""
+    """Test verify_fitdesk_schema — core ok gates and advisory payment mode checks."""
 
-    def test_checks_all_three_payment_modes(self):
-        """verify_fitdesk_schema should check Cash, Bank Transfer, Whish Money."""
+    def test_ok_true_when_core_schema_complete(self):
+        """verify_fitdesk_schema should return ok=True when core billing schema is present."""
         from provisioning_api.api.fitdesk_setup import verify_fitdesk_schema
 
         frappe = MagicMock()
-        frappe.db.count.return_value = 15  # All custom fields present
+        # Two count calls: total custom fields (15), core billing fields (4)
+        frappe.db.count.side_effect = [15, 4]
         frappe.db.exists.side_effect = [
             True,  # Item TRAINING-SESSION
             True,  # Customer Group Individual
             True,  # Print Format FitDesk Invoice
+            True,  # Price List Standard Selling
             True,  # Mode of Payment: Cash
             True,  # Mode of Payment: Bank Transfer
             True,  # Mode of Payment: Whish Money
@@ -265,27 +267,106 @@ class TestVerifyFitdeskSchema(unittest.TestCase):
         self.assertTrue(result["checks"]["mode_of_payment_bank_transfer"])
         self.assertTrue(result["checks"]["mode_of_payment_whish"])
 
-    def test_fails_verification_if_any_mode_missing(self):
-        """Verification should fail if any payment mode is missing."""
+    def test_payment_modes_are_advisory_not_blocking(self):
+        """Missing payment modes should not make ok False — they are advisory only."""
         from provisioning_api.api.fitdesk_setup import verify_fitdesk_schema
 
         frappe = MagicMock()
-        frappe.db.count.return_value = 15
+        frappe.db.count.side_effect = [15, 4]  # core schema fully present
         frappe.db.exists.side_effect = [
-            True,   # Item
-            True,   # Customer Group
-            True,   # Print Format
-            True,   # Cash mode
-            False,  # Bank Transfer mode MISSING
-            True,   # Whish Money mode
-            True,   # Server Script
+            True,   # Item TRAINING-SESSION
+            True,   # Customer Group Individual
+            True,   # Print Format FitDesk Invoice
+            True,   # Price List Standard Selling
+            True,   # Cash present
+            False,  # Bank Transfer MISSING
+            False,  # Whish Money MISSING
+            False,  # Server Script absent
+        ]
+
+        with patch.dict("sys.modules", {"frappe": frappe}):
+            result = verify_fitdesk_schema("Test Company")
+
+        # Missing payment modes must not affect ok
+        self.assertEqual(result["ok"], True)
+        self.assertFalse(result["checks"]["mode_of_payment_bank_transfer"])
+        self.assertFalse(result["checks"]["mode_of_payment_whish"])
+
+    def test_missing_required_billing_field_makes_ok_false(self):
+        """If a required billing custom field is absent, ok should be False."""
+        from provisioning_api.api.fitdesk_setup import verify_fitdesk_schema
+
+        frappe = MagicMock()
+        # core_billing_fields = 3 (e.g. custom_fd_session absent)
+        frappe.db.count.side_effect = [14, 3]
+        frappe.db.exists.side_effect = [
+            True,  # Item TRAINING-SESSION
+            True,  # Customer Group Individual
+            True,  # Print Format FitDesk Invoice
+            True,  # Price List Standard Selling
+            True,  # Cash
+            True,  # Bank Transfer
+            True,  # Whish Money
+            False, # Server Script
         ]
 
         with patch.dict("sys.modules", {"frappe": frappe}):
             result = verify_fitdesk_schema("Test Company")
 
         self.assertEqual(result["ok"], False)
+        self.assertEqual(result["checks"]["core_billing_fields"], 3)
+
+    def test_missing_standard_selling_price_list_makes_ok_false(self):
+        """Missing Standard Selling price list makes ok False — invoice submit would fail."""
+        from provisioning_api.api.fitdesk_setup import verify_fitdesk_schema
+
+        frappe = MagicMock()
+        frappe.db.count.side_effect = [15, 4]  # all custom fields present
+        frappe.db.exists.side_effect = [
+            True,  # Item TRAINING-SESSION
+            True,  # Customer Group Individual
+            True,  # Print Format FitDesk Invoice
+            False, # Price List Standard Selling MISSING
+            True,  # Cash
+            True,  # Bank Transfer
+            True,  # Whish Money
+            True,  # Server Script
+        ]
+
+        with patch.dict("sys.modules", {"frappe": frappe}):
+            result = verify_fitdesk_schema("Test Company")
+
+        self.assertEqual(result["ok"], False)
+        self.assertFalse(result["checks"]["price_list_standard_selling"])
+
+    def test_payment_method_checks_visible_in_checks(self):
+        """Payment method check results must appear in checks even when all modes absent."""
+        from provisioning_api.api.fitdesk_setup import verify_fitdesk_schema
+
+        frappe = MagicMock()
+        frappe.db.count.side_effect = [15, 4]
+        frappe.db.exists.side_effect = [
+            True,  # Item
+            True,  # Customer Group
+            True,  # Print Format
+            True,  # Price List Standard Selling
+            False, # Cash MISSING
+            False, # Bank Transfer MISSING
+            False, # Whish Money MISSING
+            False, # Server Script
+        ]
+
+        with patch.dict("sys.modules", {"frappe": frappe}):
+            result = verify_fitdesk_schema("Test Company")
+
+        # ok is True — core schema is present; payment modes are advisory
+        self.assertEqual(result["ok"], True)
+        self.assertIn("mode_of_payment_cash", result["checks"])
+        self.assertIn("mode_of_payment_bank_transfer", result["checks"])
+        self.assertIn("mode_of_payment_whish", result["checks"])
+        self.assertFalse(result["checks"]["mode_of_payment_cash"])
         self.assertFalse(result["checks"]["mode_of_payment_bank_transfer"])
+        self.assertFalse(result["checks"]["mode_of_payment_whish"])
 
 
 if __name__ == "__main__":

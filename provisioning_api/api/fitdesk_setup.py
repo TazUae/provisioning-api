@@ -757,21 +757,43 @@ def verify_fitdesk_schema(company_name: str) -> dict:
 
     Call after setup_fitdesk_schema to confirm all records were created.
 
+    Core ``ok`` requires the 4 billing-critical custom fields, TRAINING-SESSION
+    item, Customer Group Individual, and Standard Selling price list.
+
+    Mode of Payment records are advisory: they are only needed for the Paid Now
+    path and must not block tenants whose Chart of Accounts is incomplete or
+    who exclusively use Pay Later / PPS invoice flows.
+
     Returns:
         {
             "ok": <bool>,
             "checks": {
-                "custom_fields": <int>,     # should be 7
+                "custom_fields": <int>,               # total custom fields present (max 15)
+                "core_billing_fields": <int>,          # required billing fields present (max 4)
                 "training_item": <bool>,
                 "customer_group": <bool>,
-                "print_format": <bool>,
+                "print_format": <bool>,                # advisory — cosmetic only
+                "price_list_standard_selling": <bool>, # required for invoice submission
+                "mode_of_payment_cash": <bool>,        # advisory — paid-now path only
+                "mode_of_payment_bank_transfer": <bool>,  # advisory — paid-now path only
+                "mode_of_payment_whish": <bool>,       # advisory — paid-now path only
+                "server_script": <bool>,               # advisory — WhatsApp webhook only
             }
         }
     """
     import frappe  # lazy
 
+    # The 4 custom fields the new billing model strictly requires.
+    _REQUIRED_BILLING_FIELDNAMES = [
+        "custom_billing_mode",
+        "custom_default_session_rate",
+        "custom_fd_session",
+        "custom_invoice_kind",
+    ]
+
     checks: dict = {}
 
+    # Total custom field count (observability — all 15 known fields)
     checks["custom_fields"] = frappe.db.count(
         "Custom Field",
         {
@@ -795,21 +817,34 @@ def verify_fitdesk_schema(company_name: str) -> dict:
             ]],
         },
     )
+
+    # Subset check — only the 4 billing-critical fields gate core readiness
+    checks["core_billing_fields"] = frappe.db.count(
+        "Custom Field",
+        {
+            "dt": ["in", ["Customer", "Sales Invoice"]],
+            "fieldname": ["in", _REQUIRED_BILLING_FIELDNAMES],
+        },
+    )
+
     checks["training_item"] = bool(frappe.db.exists("Item", "TRAINING-SESSION"))
     checks["customer_group"] = bool(frappe.db.exists("Customer Group", "Individual"))
     checks["print_format"] = bool(frappe.db.exists("Print Format", "FitDesk Invoice"))
+    checks["price_list_standard_selling"] = bool(frappe.db.exists("Price List", "Standard Selling"))
+
+    # Advisory — included for observability but do not affect ok
     checks["mode_of_payment_cash"] = bool(frappe.db.exists("Mode of Payment", "Cash"))
     checks["mode_of_payment_bank_transfer"] = bool(frappe.db.exists("Mode of Payment", "Bank Transfer"))
     checks["mode_of_payment_whish"] = bool(frappe.db.exists("Mode of Payment", "Whish Money"))
     checks["server_script"] = bool(frappe.db.exists("Server Script", "FitDesk Invoice Submit Webhook"))
 
     all_ok = (
-        checks["custom_fields"] == 15
+        checks["core_billing_fields"] == len(_REQUIRED_BILLING_FIELDNAMES)
         and checks["training_item"]
         and checks["customer_group"]
-        and checks["print_format"]
-        and checks["mode_of_payment_cash"]
-        and checks["mode_of_payment_bank_transfer"]
-        and checks["mode_of_payment_whish"]
+        and checks["price_list_standard_selling"]
+        # print_format: cosmetic — advisory only
+        # mode_of_payment_*: paid-now path only — advisory
+        # server_script: WhatsApp webhook only — advisory
     )
     return {"ok": all_ok, "checks": checks}
